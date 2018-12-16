@@ -2,39 +2,57 @@ import paho.mqtt.client as mqtt
 from uuid import uuid4
 import json
 from asyncio import Queue
+import base64
+import logging
 
 TOPIC_DEV_GET = 'tlwbe/control/dev/get'
 TOPIC_APP_GET = 'tlwbe/control/app/get'
 
 
 class Join:
-    pass
+    __slots__ = 'appeui', 'deveui', 'timestamp'
+
+    def __init__(self, msg: mqtt.MQTTMessage):
+        topic_parts = msg.topic.split('/')
+        self.appeui = topic_parts[-2]
+        self.deveui = topic_parts[-1]
+        self.timestamp = json.loads(msg.payload)['timestamp']
 
 
 class Uplink:
-    pass
+    __slots__ = ['timestamp', 'appeui', 'devui', 'port', 'payload', 'rfparams']
+
+    def __init__(self, msg: mqtt.MQTTMessage):
+        msg_json = json.loads(msg.payload)
+        self.timestamp = msg_json.get('timestamp')
+        self.appeui = msg_json.get('appeui')
+        self.devui = msg_json.get('deveui')
+        self.port = msg_json.get('port')
+        b64_payload: str = msg_json.get('payload')
+        self.payload = base64.decodebytes(b64_payload.encode("ascii"))
+        self.rfparams = msg_json.get('rfparams')
 
 
 class Tlwbe:
-    __slots__ = ['queue_joins', 'queue_uplinks', 'mqtt_client']
+    __slots__ = ['queue_joins', 'queue_uplinks', 'mqtt_client', '__logger']
 
     def __dump_message(self, msg):
-        print(msg.topic)
+        self.__logger.debug('publish on %s' % msg.topic)
 
     def _on_sub(self, client, userdata, mid, granted_qos):
-        print("subbed")
+        self.__logger.debug("subbed")
 
     def __on_msg(self, client, userdata, msg):
         self.__dump_message(msg)
-        print('rogue publish')
+        self.__logger.warning('rogue publish')
 
     def __on_join(self, client, userdata, msg):
         self.__dump_message(msg)
-        self.queue_joins.put_nowait(msg)
+        self.queue_joins.put_nowait(Join(msg))
 
     def __on_uplink(self, client, userdata, msg):
         self.__dump_message(msg)
-        self.queue_uplinks.put_nowait(msg)
+        self.queue_uplinks.put_nowait(Uplink(msg))
 
     def __init__(self, host: str):
         self.queue_joins = Queue()
@@ -47,6 +65,8 @@ class Tlwbe:
         self.mqtt_client.on_subscribe = self._on_sub
         self.mqtt_client.subscribe("tlwbe/control/result/#")
 
+        self.__logger = logging.getLogger('tlwbe')
+
     def loop(self):
         self.mqtt_client.loop_forever(retry_first_connection=True)
 
@@ -55,7 +75,7 @@ class Tlwbe:
         self.mqtt_client.publish("%s/%s" % (topic, token), json.dumps(payload))
 
     def __sub_to_topic(self, topic: str):
-        print('subscribing to %s' % topic)
+        self.__logger.debug('subscribing to %s' % topic)
         self.mqtt_client.subscribe(topic)
 
     def get_dev_by_name(self, name: str):

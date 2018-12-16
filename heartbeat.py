@@ -4,20 +4,31 @@ import argparse
 import serial
 from rak811 import Rak811
 import asyncio
-from tlwbe import Tlwbe
+from tlwbe import Tlwbe, Uplink
+import logging
+
+HEARTBEAT_INTERVAL = 5 * 30
+UPLINK_TIMEOUT = 20
+RETRY_INTERVAL = 10
 
 
-async def send_ping():
+async def send_ping(tlwbe: Tlwbe):
     counter = 0
+    failures = 0
     while True:
+        logger.info('sending heartbeat')
         rak811.send(1, bytearray('%08x' % counter, 'utf-8'))
         counter += 1
-        await asyncio.sleep(30)
-
-
-async def check_ping(tlwbe: Tlwbe):
-    while True:
-        msg = await tlwbe.queue_uplinks.get()
+        try:
+            msg: Uplink = await asyncio.wait_for(tlwbe.queue_uplinks.get(), UPLINK_TIMEOUT)
+            failures = 0
+            logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
+            await asyncio.sleep(HEARTBEAT_INTERVAL)
+        except asyncio.futures.TimeoutError:
+            failures += 1
+            logger.info('didn\'t see uplink from tlwbe, failed %d times so far, will try again in %ds'
+                        % (failures, RETRY_INTERVAL))
+            await asyncio.sleep(RETRY_INTERVAL)
 
 
 async def main():
@@ -38,11 +49,17 @@ async def main():
     tlwbe.listen_for_joins(appeui, deveui)
     tlwbe.listen_for_uplinks(appeui, deveui, 1)
 
+    logger.info('joining...')
     rak811.join()
-    msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
-    print(msg)
+    try:
+        msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
+    except asyncio.futures.TimeoutError:
+        logger.warning('join failed')
+        return
 
-    await asyncio.gather(send_ping(), check_ping(tlwbe))
+    logger.info('joined')
+
+    await asyncio.gather(send_ping(tlwbe))
 
 
 parser = argparse.ArgumentParser()
@@ -62,6 +79,9 @@ if args.appname is None and args.appeui is None:
 if args.devname is None and args.deveui is None:
     print("name the dev name or eui")
     exit(1)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('heartbeat')
 
 ser = serial.Serial(args.serialport, 115200, timeout=30)  # open serial port
 rak811 = Rak811(ser)
