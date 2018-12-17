@@ -1,10 +1,12 @@
 import logging
+import serial
+import time
 
 
 class Rak811:
     __slots__ = ['port', '__logger']
 
-    def __init__(self, port):
+    def __init__(self, port: serial.Serial):
         self.port = port
         self.__logger = logging.getLogger('rak811')
 
@@ -23,6 +25,14 @@ class Rak811:
     def __read_recv(self):
         line = self.port.readline()
         self.__logger.debug('recv: %s' % line)
+
+    def reset(self):
+        self.__logger.debug('doing reset...')
+        self.port.setDTR(1)
+        time.sleep(1)
+        self.port.setDTR(0)
+        time.sleep(1)
+        self.port.flushInput()
 
     def get_version(self):
         line = self.__encode_command('version')

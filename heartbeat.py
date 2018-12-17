@@ -4,7 +4,9 @@ import argparse
 import serial
 from rak811 import Rak811
 import asyncio
-from tlwbe import Tlwbe, Uplink
+from tlwbe import Tlwbe, Uplink, Result
+from gwctrl import Gateway
+from pktfwdbr import PacketForwarder
 import logging
 
 HEARTBEAT_INTERVAL = 5 * 30
@@ -36,6 +38,12 @@ async def main():
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, tlwbe.loop)
 
+    gwctrl = Gateway(args.mqtthost, 'bbbgw01')
+    loop.run_in_executor(None, gwctrl.loop)
+
+    pktfwdr = PacketForwarder(args.mqtthost)
+    loop.run_in_executor(None, pktfwdr.loop)
+
     appeui = args.appeui
     if appeui is None:
         appeui = tlwbe.get_app_by_name(args.appname)
@@ -56,8 +64,10 @@ async def main():
     except asyncio.futures.TimeoutError:
         logger.warning('join failed')
         return
-
     logger.info('joined')
+
+    result: Result = await tlwbe.get_dev_by_eui(deveui)
+    logger.debug('dev address is %s' % result.payload)
 
     await asyncio.gather(send_ping(tlwbe))
 
@@ -80,12 +90,13 @@ if args.devname is None and args.deveui is None:
     print("name the dev name or eui")
     exit(1)
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('heartbeat')
 
 ser = serial.Serial(args.serialport, 115200, timeout=30)  # open serial port
 rak811 = Rak811(ser)
 
+rak811.reset()
 rak811.get_version()
 
 asyncio.run(main())

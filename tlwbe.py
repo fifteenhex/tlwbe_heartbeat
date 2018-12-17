@@ -2,6 +2,8 @@ import paho.mqtt.client as mqtt
 from uuid import uuid4
 import json
 from asyncio import Queue
+from asyncio import Future
+import asyncio
 import base64
 import logging
 
@@ -33,8 +35,16 @@ class Uplink:
         self.rfparams = msg_json.get('rfparams')
 
 
+class Result:
+    __slots__ = ['token', 'payload']
+
+    def __init__(self, msg: mqtt.MQTTMessage):
+        self.token = msg.topic.split("/")[-1]
+        self.payload = msg.payload
+
+
 class Tlwbe:
-    __slots__ = ['queue_joins', 'queue_uplinks', 'mqtt_client', '__logger']
+    __slots__ = ['queue_joins', 'queue_uplinks', 'mqtt_client', '__loop', '__logger', '__results']
 
     def __dump_message(self, msg):
         self.__logger.debug('publish on %s' % msg.topic)
@@ -54,45 +64,67 @@ class Tlwbe:
         self.__dump_message(msg)
         self.queue_uplinks.put_nowait(Uplink(msg))
 
+    def __on_result(self, client, userdata, msg):
+        self.__dump_message(msg)
+        result = Result(msg)
+        self.__logger.debug('have result for %s' % result.token)
+        if result.token in self.__results:
+            future: Future = self.__results.pop(result.token)
+            self.__loop.call_soon_threadsafe(future.set_result, result)
+        else:
+            self.__logger.warning('rogue result')
+
     def __init__(self, host: str):
+        self.__loop = asyncio.get_running_loop()
+
         self.queue_joins = Queue()
         self.queue_uplinks = Queue()
+        self.__results = {}
         self.mqtt_client = mqtt.Client()
         self.mqtt_client.connect(host)
         self.mqtt_client.message_callback_add('tlwbe/join/+/+', self.__on_join)
         self.mqtt_client.message_callback_add('tlwbe/uplink/#', self.__on_uplink)
+        self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_result)
         self.mqtt_client.on_message = self.__on_msg
         self.mqtt_client.on_subscribe = self._on_sub
-        self.mqtt_client.subscribe("tlwbe/control/result/#")
+        self.mqtt_client.subscribe('tlwbe/control/result/#')
 
         self.__logger = logging.getLogger('tlwbe')
 
     def loop(self):
         self.mqtt_client.loop_forever(retry_first_connection=True)
 
-    def __publish_and_wait_for_result(self, topic: str, payload: dict):
+    async def __publish_and_wait_for_result(self, topic: str, payload: dict):
         token = str(uuid4())
+        future = asyncio.get_running_loop().create_future()
+        self.__results[token] = future
         self.mqtt_client.publish("%s/%s" % (topic, token), json.dumps(payload))
+        result = await asyncio.wait_for(future, 10)
+        return result
 
     def __sub_to_topic(self, topic: str):
         self.__logger.debug('subscribing to %s' % topic)
         self.mqtt_client.subscribe(topic)
 
-    def get_dev_by_name(self, name: str):
+    async def get_dev_by_name(self, name: str):
         payload = {'name': name}
-        self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        result = await self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        return result
 
-    def get_dev_by_eui(self, eui: str):
+    async def get_dev_by_eui(self, eui: str):
         payload = {'eui': eui}
-        self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        result = await self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        return result
 
-    def get_app_by_name(self, name: str):
+    async def get_app_by_name(self, name: str):
         payload = {'name': name}
-        self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        result = await self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        return result
 
     def get_app_by_eui(self, eui: str):
         payload = {'eui': eui}
-        self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        result = self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        return result
 
     def listen_for_joins(self, appeui: str, deveui: str):
         self.__sub_to_topic('tlwbe/join/%s/%s' % (appeui, deveui))
