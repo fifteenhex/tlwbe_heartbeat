@@ -38,7 +38,7 @@ async def main():
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, tlwbe.loop)
 
-    gwctrl = Gateway(args.mqtthost, 'bbbgw01')
+    gwctrl = Gateway(args.mqtthost, args.gateway)
     loop.run_in_executor(None, gwctrl.loop)
 
     pktfwdr = PacketForwarder(args.mqtthost)
@@ -75,6 +75,7 @@ async def main():
 parser = argparse.ArgumentParser()
 parser.add_argument('--serialport', type=str, required=True)
 parser.add_argument('--mqtthost', type=str, required=True)
+parser.add_argument('--gateway', type=str, required=True)
 parser.add_argument('--appname', type=str)
 parser.add_argument('--appeui', type=str)
 parser.add_argument('--devname', type=str)
