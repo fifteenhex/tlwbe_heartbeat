@@ -35,14 +35,13 @@ async def send_ping(tlwbe: Tlwbe):
 
 async def main():
     tlwbe = Tlwbe(args.mqtthost)
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, tlwbe.loop)
+    asyncio.get_running_loop().run_in_executor(None, tlwbe.loop)
 
     gwctrl = Gateway(args.mqtthost, args.gateway)
-    loop.run_in_executor(None, gwctrl.loop)
+    asyncio.get_running_loop().run_in_executor(None, gwctrl.loop)
 
     pktfwdr = PacketForwarder(args.mqtthost)
-    loop.run_in_executor(None, pktfwdr.loop)
+    asyncio.get_running_loop().run_in_executor(None, pktfwdr.loop)
 
     appeui = args.appeui
     if appeui is None:
@@ -100,6 +99,9 @@ rak811 = Rak811(ser)
 rak811.reset()
 rak811.get_version()
 
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except KeyboardInterrupt:
+    print('dying..')
 
-ser.close()  # close port
+ser.close()

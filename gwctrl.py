@@ -1,23 +1,20 @@
 import paho.mqtt.client as mqtt
 import logging
+from mqttbase import MqttBase
 
 
-class Gateway:
-    __slots__ = ['__logger', '__mqtt_client']
+class Gateway(MqttBase):
+    __slots__ = ['__logger']
 
     def __on_heartbeat(self, client, userdata, msg):
         self.__logger.debug("saw gateway heartbeat")
 
-    def __init__(self, mqtt_host: str, gw_name: str):
+    def __init__(self, host: str, gw_name: str):
+        super().__init__(host)
         heartbeat_topic = 'gwctrl/%s/heartbeat' % gw_name
         self.__logger = logging.getLogger('gwctrl')
-        self.__mqtt_client = mqtt.Client()
-        self.__mqtt_client.message_callback_add(heartbeat_topic, self.__on_heartbeat)
-        self.__mqtt_client.connect(mqtt_host)
-        self.__mqtt_client.subscribe(heartbeat_topic)
-
-    def loop(self):
-        self.__mqtt_client.loop_forever(retry_first_connection=True)
+        self.mqtt_client.message_callback_add(heartbeat_topic, self.__on_heartbeat)
+        self.mqtt_client.subscribe(heartbeat_topic)
 
     def reboot(self):
         pass

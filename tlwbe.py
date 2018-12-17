@@ -6,6 +6,7 @@ from asyncio import Future
 import asyncio
 import base64
 import logging
+from mqttbase import MqttBase
 
 TOPIC_DEV_GET = 'tlwbe/control/dev/get'
 TOPIC_APP_GET = 'tlwbe/control/app/get'
@@ -43,8 +44,8 @@ class Result:
         self.payload = msg.payload
 
 
-class Tlwbe:
-    __slots__ = ['queue_joins', 'queue_uplinks', 'mqtt_client', '__loop', '__logger', '__results']
+class Tlwbe(MqttBase):
+    __slots__ = ['queue_joins', 'queue_uplinks', '__logger', '__results']
 
     def __dump_message(self, msg):
         self.__logger.debug('publish on %s' % msg.topic)
@@ -70,18 +71,16 @@ class Tlwbe:
         self.__logger.debug('have result for %s' % result.token)
         if result.token in self.__results:
             future: Future = self.__results.pop(result.token)
-            self.__loop.call_soon_threadsafe(future.set_result, result)
+            self.event_loop.call_soon_threadsafe(future.set_result, result)
         else:
             self.__logger.warning('rogue result')
 
     def __init__(self, host: str):
-        self.__loop = asyncio.get_running_loop()
-
+        super().__init__(host)
         self.queue_joins = Queue()
         self.queue_uplinks = Queue()
         self.__results = {}
-        self.mqtt_client = mqtt.Client()
-        self.mqtt_client.connect(host)
+
         self.mqtt_client.message_callback_add('tlwbe/join/+/+', self.__on_join)
         self.mqtt_client.message_callback_add('tlwbe/uplink/#', self.__on_uplink)
         self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_result)
@@ -90,9 +89,6 @@ class Tlwbe:
         self.mqtt_client.subscribe('tlwbe/control/result/#')
 
         self.__logger = logging.getLogger('tlwbe')
-
-    def loop(self):
-        self.mqtt_client.loop_forever(retry_first_connection=True)
 
     async def __publish_and_wait_for_result(self, topic: str, payload: dict):
         token = str(uuid4())
