@@ -90,7 +90,7 @@ if args.devname is None and args.deveui is None:
     print("name the dev name or eui")
     exit(1)
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('heartbeat')
 
 ser = serial.Serial(args.serialport, 115200, timeout=30)  # open serial port

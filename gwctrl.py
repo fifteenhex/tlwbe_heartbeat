@@ -19,5 +19,5 @@ class Gateway:
     def loop(self):
         self.__mqtt_client.loop_forever(retry_first_connection=True)
 
-    def reset(self):
+    def reboot(self):
         pass
