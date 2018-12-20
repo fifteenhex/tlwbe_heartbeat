@@ -1,6 +1,11 @@
 import logging
 import serial
 import time
+import re
+
+
+class CommandException(Exception):
+    pass
 
 
 class Rak811:
@@ -19,11 +24,17 @@ class Rak811:
         return line.encode('ascii')
 
     def __read_command_result(self):
-        line = self.port.readline()
+        line = self.port.readline().decode('ascii')
         self.__logger.debug('result: %s' % line)
+        matches = re.search('OK', line)
+        if matches is None:
+            matches = re.search('ERROR', line)
+            assert matches is not None
+            self.__logger.debug('command resulted in an error')
+            raise CommandException()
 
     def __read_recv(self):
-        line = self.port.readline()
+        line = self.port.readline().decode('ascii')
         self.__logger.debug('recv: %s' % line)
 
     def reset(self):
@@ -36,6 +47,21 @@ class Rak811:
 
     def get_version(self):
         line = self.__encode_command('version')
+        self.port.write(line)
+        self.__read_command_result()
+
+    def get_band(self):
+        line = self.__encode_command('band')
+        self.port.write(line)
+        self.__read_command_result()
+
+    def get_channel_list(self):
+        line = self.__encode_command('get_config', ['ch_list'])
+        self.port.write(line)
+        self.__read_command_result()
+
+    def get_signal(self):
+        line = self.__encode_command('signal')
         self.port.write(line)
         self.__read_command_result()
 

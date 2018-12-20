@@ -64,6 +64,9 @@ async def main():
         logger.warning('join failed')
         return
     logger.info('joined')
+    rak811.get_signal()
+
+    rak811.get_channel_list()
 
     result: Result = await tlwbe.get_dev_by_eui(deveui)
     logger.debug('dev address is %s' % result.payload)
@@ -90,7 +93,7 @@ if args.devname is None and args.deveui is None:
     print("name the dev name or eui")
     exit(1)
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('heartbeat')
 
 ser = serial.Serial(args.serialport, 115200, timeout=30)  # open serial port
