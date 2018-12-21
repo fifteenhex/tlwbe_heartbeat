@@ -23,8 +23,12 @@ class Rak811:
         line += '\r\n'
         return line.encode('ascii')
 
-    def __read_command_result(self):
-        line = self.port.readline().decode('ascii')
+    def __read_line(self):
+        return self.port.readline().decode('ascii')
+
+    def __read_command_result(self, line=None):
+        if line is None:
+            line = self.__read_line()
         self.__logger.debug('result: %s' % line)
         matches = re.search('OK', line)
         if matches is None:
@@ -33,8 +37,9 @@ class Rak811:
             self.__logger.debug('command resulted in an error')
             raise CommandException()
 
-    def __read_recv(self):
-        line = self.port.readline().decode('ascii')
+    def __read_recv(self, line=None):
+        if line is None:
+            line = self.__read_line()
         self.__logger.debug('recv: %s' % line)
 
     def reset(self):
@@ -75,5 +80,14 @@ class Rak811:
         assert (1 <= port <= 223)
         line = self.__encode_command('send', [str(1 if confirmed else 0), str(port), data.hex()])
         self.port.write(line)
-        self.__read_command_result()
-        self.__read_recv()
+
+        # there seems to be a firmware bug that causes
+        # the OK to come after the at+recv sometimes
+        # so read both lines and reorder them if needed
+        lines = [self.__read_line(), self.__read_line()]
+        if lines[0].startswith("at+recv"):
+            recvline = lines.pop(0)
+            lines.append(recvline)
+
+        self.__read_command_result(lines[0])
+        self.__read_recv(lines[1])
