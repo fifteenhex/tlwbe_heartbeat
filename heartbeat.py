@@ -96,7 +96,7 @@ if args.devname is None and args.deveui is None:
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('heartbeat')
 
-ser = serial.Serial(args.serialport, 115200, timeout=30)  # open serial port
+ser = serial.Serial(args.serialport, 115200, timeout=10)  # open serial port
 rak811 = Rak811(ser)
 
 rak811.reset()

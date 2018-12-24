@@ -24,7 +24,12 @@ class Rak811:
         return line.encode('ascii')
 
     def __read_line(self):
-        return self.port.readline().decode('ascii')
+        line = self.port.read_until(b'\r\n').decode('ascii')
+        if len(line) == 0:
+            return None
+        line = line[:-2]
+        self.__logger.debug('read line: %s' % line)
+        return line
 
     def __read_command_result(self, line=None):
         if line is None:
@@ -36,6 +41,10 @@ class Rak811:
             assert matches is not None
             self.__logger.debug('command resulted in an error')
             raise CommandException()
+
+    def __write_line_read_result(self, out_line):
+        self.port.write(out_line)
+        return self.__read_command_result()
 
     def __read_recv(self, line=None):
         if line is None:
@@ -52,23 +61,23 @@ class Rak811:
 
     def get_version(self):
         line = self.__encode_command('version')
-        self.port.write(line)
-        self.__read_command_result()
+        self.__write_line_read_result(line)
 
     def get_band(self):
         line = self.__encode_command('band')
-        self.port.write(line)
-        self.__read_command_result()
+        self.__write_line_read_result(line)
+
+    def get_class(self):
+        line = self.__encode_command('class')
+        self.__write_line_read_result(line)
 
     def get_channel_list(self):
         line = self.__encode_command('get_config', ['ch_list'])
-        self.port.write(line)
-        self.__read_command_result()
+        self.__write_line_read_result(line)
 
     def get_signal(self):
         line = self.__encode_command('signal')
-        self.port.write(line)
-        self.__read_command_result()
+        self.__write_line_read_result(line)
 
     def join(self, otaa=True):
         line = self.__encode_command('join', (['otaa'] if otaa else ['abp']))
@@ -81,13 +90,16 @@ class Rak811:
         line = self.__encode_command('send', [str(1 if confirmed else 0), str(port), data.hex()])
         self.port.write(line)
 
-        # there seems to be a firmware bug that causes
-        # the OK to come after the at+recv sometimes
-        # so read both lines and reorder them if needed
-        lines = [self.__read_line(), self.__read_line()]
-        if lines[0].startswith("at+recv"):
-            recvline = lines.pop(0)
-            lines.append(recvline)
+        # We should get 2 or 3 lines back here
+        lines = []
+        while len(lines) < 3:
+            in_line = self.__read_line()
+            if in_line is None:
+                break
+            lines.append(in_line)
+
+        self.__logger.debug(",".join(lines))
 
         self.__read_command_result(lines[0])
-        self.__read_recv(lines[1])
+        for recv_line in lines[1:]:
+            self.__read_recv(recv_line)
