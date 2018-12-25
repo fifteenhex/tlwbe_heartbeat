@@ -2,10 +2,29 @@ import logging
 import serial
 import time
 import re
+from enum import Enum
 
 
 class CommandException(Exception):
     pass
+
+
+class ReceiveException(Exception):
+    pass
+
+
+class Status(Enum):
+    RECV_DATA = 0
+    TX_COMFIRMED = 1
+    TX_UNCOMFIRMED = 2
+    JOINED_SUCCESS = 3
+    JOINED_FAILED = 4
+    TX_TIMEOUT = 5
+    RX2_TIMEOUT = 6
+    DOWNLINK_REPEATED = 7
+    WAKE_UP = 8
+    P2PTX_COMPLETE = 9
+    UNKNOWN = 100
 
 
 class Rak811:
@@ -50,6 +69,22 @@ class Rak811:
         if line is None:
             line = self.__read_line()
         self.__logger.debug('recv: %s' % line)
+        matches = re.search('at\+recv=([0-9]|100)', line)
+        if matches:
+            status = Status(int(matches.group(1)))
+            if status == Status.RECV_DATA:
+                matches = re.search('at\+recv=0,([0-9]{1,3}),(-[0-9]{1,3}),([0-9]{1,3}),([0-9]{1,3}),([a-f0-9]*)', line)
+                if matches:
+                    port = int(matches.group(1))
+                    data_len = int(matches.group(4))
+                    data = matches.group(5)
+                    assert len(data) / 2 == data_len, ('expected %d bytes of data, got %d' % data_len, len(data) / 2)
+                    self.__logger.debug('have downlink on port %d' % port)
+                    return status
+            else:
+                return status
+
+        raise ReceiveException
 
     def reset(self):
         self.__logger.debug('doing reset...')
@@ -83,7 +118,10 @@ class Rak811:
         line = self.__encode_command('join', (['otaa'] if otaa else ['abp']))
         self.port.write(line)
         self.__read_command_result()
-        self.__read_recv()
+
+        status = self.__read_recv()
+        assert status == Status.JOINED_SUCCESS or status == Status.JOINED_FAILED
+        return status == Status.JOINED_SUCCESS
 
     def send(self, port, data: bytearray, confirmed=False):
         assert (1 <= port <= 223)
