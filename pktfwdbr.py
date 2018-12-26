@@ -14,7 +14,10 @@ class PacketForwarder(MqttBase):
         payload_json = json.loads(msg.payload)
         pkt_data = base64.b64decode(payload_json['data'])
         pkt_type = lorawan.get_packet_type(pkt_data)
-        if pkt_type == lorawan.MHDR_MTYPE_CNFUP or pkt_type == lorawan.MHDR_MTYPE_UNCNFUP:
+        if pkt_type == lorawan.MHDR_MTYPE_JOINREQ:
+            join_reg = lorawan.JoinReq(pkt_data)
+            self.__logger.debug('saw joinreq for %x' % join_reg.deveui)
+        elif pkt_type == lorawan.MHDR_MTYPE_CNFUP or pkt_type == lorawan.MHDR_MTYPE_UNCNFUP:
             uplink = lorawan.Uplink(pkt_data)
             self.__logger.debug(
                 'saw uplink for %x, framecounter %d, port %d' % (uplink.devaddr, uplink.framecounter, uplink.port))
@@ -24,7 +27,10 @@ class PacketForwarder(MqttBase):
         payload_json = json.loads(msg.payload)
         pkt_data = base64.b64decode(payload_json["txpk"]['data'])
         pkt_type = lorawan.get_packet_type(pkt_data)
-        if pkt_type == lorawan.MHDR_MTYPE_CNFDN or pkt_type == lorawan.MHDR_MTYPE_UNCNFDN:
+        if pkt_type == lorawan.MHDR_MTYPE_JOINACK:
+            join_ack = lorawan.JoinAccept(pkt_data)
+            self.__logger.debug('saw joinack')
+        elif pkt_type == lorawan.MHDR_MTYPE_CNFDN or pkt_type == lorawan.MHDR_MTYPE_UNCNFDN:
             downlink = lorawan.Downlink(pkt_data)
             self.__logger.debug('saw downlink for %x, framecounter %d, port %d' % (
                 downlink.devaddr, downlink.framecounter, downlink.port))

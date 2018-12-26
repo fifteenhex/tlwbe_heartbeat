@@ -45,7 +45,7 @@ class Result:
 
 
 class Tlwbe(MqttBase):
-    __slots__ = ['queue_joins', 'queue_uplinks', '__logger', '__results']
+    __slots__ = ['queue_joins', 'queue_uplinks', '__logger', '__control_results', '__downlink_results']
 
     def __dump_message(self, msg):
         self.__logger.debug('publish on %s' % msg.topic)
@@ -65,38 +65,53 @@ class Tlwbe(MqttBase):
         self.__dump_message(msg)
         self.queue_uplinks.put_nowait(Uplink(msg))
 
-    def __on_result(self, client, userdata, msg):
+    def __on_result(self, msg, results: dict):
         self.__dump_message(msg)
         result = Result(msg)
         self.__logger.debug('have result for %s' % result.token)
-        if result.token in self.__results:
-            future: Future = self.__results.pop(result.token)
+        if result.token in self.__control_results:
+            future: Future = self.__control_results.pop(result.token)
             self.event_loop.call_soon_threadsafe(future.set_result, result)
         else:
             self.__logger.warning('rogue result')
+
+    def __on_control_result(self, client, userdata, msg):
+        self.__on_result(msg, self.__control_results)
+
+    def __on_downlink_result(self, client, userdata, msg):
+        self.__on_result(msg, self.__downlink_results)
 
     def __init__(self, host: str):
         super().__init__(host)
         self.queue_joins = Queue()
         self.queue_uplinks = Queue()
-        self.__results = {}
+        self.__control_results = {}
+        self.__downlink_results = {}
 
         self.mqtt_client.message_callback_add('tlwbe/join/+/+', self.__on_join)
         self.mqtt_client.message_callback_add('tlwbe/uplink/#', self.__on_uplink)
-        self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_result)
+        self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_control_result)
+        self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_downlink_result)
         self.mqtt_client.on_message = self.__on_msg
         self.mqtt_client.on_subscribe = self._on_sub
         self.mqtt_client.subscribe('tlwbe/control/result/#')
+        self.mqtt_client.subscribe('tlwbe/downlink/result/#')
 
         self.__logger = logging.getLogger('tlwbe')
 
-    async def __publish_and_wait_for_result(self, topic: str, payload: dict):
+    async def __publish_and_wait_for_result(self, topic: str, payload: dict, results: dict):
         token = str(uuid4())
         future = asyncio.get_running_loop().create_future()
-        self.__results[token] = future
+        results[token] = future
         self.mqtt_client.publish("%s/%s" % (topic, token), json.dumps(payload))
         result = await asyncio.wait_for(future, 10)
         return result
+
+    async def __publish_and_wait_for_control_result(self, topic: str, payload: dict):
+        return await self.__publish_and_wait_for_result(topic, payload, self.__control_results)
+
+    async def __publish_and_wait_for_downlink_result(self, topic: str, payload: dict):
+        return await self.__publish_and_wait_for_result(topic, payload, self.__downlink_results)
 
     def __sub_to_topic(self, topic: str):
         self.__logger.debug('subscribing to %s' % topic)
@@ -104,22 +119,22 @@ class Tlwbe(MqttBase):
 
     async def get_dev_by_name(self, name: str):
         payload = {'name': name}
-        result = await self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        result = await self.__publish_and_wait_for_control_result(TOPIC_DEV_GET, payload)
         return result
 
     async def get_dev_by_eui(self, eui: str):
         payload = {'eui': eui}
-        result = await self.__publish_and_wait_for_result(TOPIC_DEV_GET, payload)
+        result = await self.__publish_and_wait_for_control_result(TOPIC_DEV_GET, payload)
         return result
 
     async def get_app_by_name(self, name: str):
         payload = {'name': name}
-        result = await self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        result = await self.__publish_and_wait_for_control_result(TOPIC_APP_GET, payload)
         return result
 
     def get_app_by_eui(self, eui: str):
         payload = {'eui': eui}
-        result = self.__publish_and_wait_for_result(TOPIC_APP_GET, payload)
+        result = self.__publish_and_wait_for_control_result(TOPIC_APP_GET, payload)
         return result
 
     def listen_for_joins(self, appeui: str, deveui: str):
@@ -127,3 +142,6 @@ class Tlwbe(MqttBase):
 
     def listen_for_uplinks(self, appeui: str, deveui: str, port: int):
         self.__sub_to_topic('tlwbe/uplink/%s/%s/%d' % (appeui, deveui, port))
+
+    def send_downlink(self, app_eui, dev_eui, port, payload=None, confirm=False):
+        pass

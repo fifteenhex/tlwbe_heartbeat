@@ -25,6 +25,7 @@ async def send_ping(tlwbe: Tlwbe):
             msg: Uplink = await asyncio.wait_for(tlwbe.queue_uplinks.get(), UPLINK_TIMEOUT)
             failures = 0
             logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
+
             await asyncio.sleep(HEARTBEAT_INTERVAL)
         except asyncio.futures.TimeoutError:
             failures += 1

@@ -19,17 +19,27 @@ def get_packet_type(raw_packet: bytearray):
 
 
 class Packet:
-    __slots__ = ['type']
+    __slots__ = ['type', 'mac_payload']
 
     def __init__(self, raw_packet: bytearray):
         self.type = get_packet_type(raw_packet)
+        self.mac_payload = raw_packet[1:-4]
 
 
-class Join(Packet):
-    __slots__ = ['deveui']
+class JoinReq(Packet):
+    __slots__ = ['appeui', 'deveui', 'devnonce']
 
     def __init__(self, raw_packet: bytearray):
-        super(Join, self).__init__(raw_packet)
+        super(JoinReq, self).__init__(raw_packet)
+        unpacked = struct.unpack('<QQH', self.mac_payload)
+        self.appeui = unpacked[0]
+        self.deveui = unpacked[1]
+        self.devnonce = unpacked[2]
+
+
+class JoinAccept(Packet):
+    def __init__(self, raw_packet: bytearray):
+        super(JoinAccept, self).__init__(raw_packet)
 
 
 class Data(Packet):
@@ -37,11 +47,11 @@ class Data(Packet):
 
     def __init__(self, raw_packet: bytearray):
         super(Data, self).__init__(raw_packet)
-        mac_payload = raw_packet[1:-4]
+
         mic = raw_packet[-4:]
 
         # unpack the header and get the devaddr and framecounter
-        fheader = mac_payload[0:7]
+        fheader = self.mac_payload[0:7]
         unpacked_header = struct.unpack('<IBh', fheader)
         self.devaddr = unpacked_header[0]
         self.framecounter = unpacked_header[2]
@@ -52,7 +62,7 @@ class Data(Packet):
         logging.debug('packet has %d fopts' % num_fopts)
 
         # pull out the port and payload
-        frmpayload = mac_payload[7 + num_fopts:]
+        frmpayload = self.mac_payload[7 + num_fopts:]
         if len(frmpayload) == 0:
             logging.debug('packet has no payload')
         self.port = struct.unpack('<B', frmpayload[0:1])[0]
