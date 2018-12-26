@@ -143,5 +143,9 @@ class Tlwbe(MqttBase):
     def listen_for_uplinks(self, appeui: str, deveui: str, port: int):
         self.__sub_to_topic('tlwbe/uplink/%s/%s/%d' % (appeui, deveui, port))
 
-    def send_downlink(self, app_eui, dev_eui, port, payload=None, confirm=False):
-        pass
+    async def send_downlink(self, app_eui, dev_eui, port, payload: bytes = None, confirm=False):
+        msg_topic = 'tlwbe/downlink/schedule/%s/%s/%d' % (app_eui, dev_eui, port)
+        msg_payload = {'confirm': confirm}
+        if payload is not None:
+            msg_payload['payload'] = base64.b64encode(payload).decode('ascii')
+        return await self.__publish_and_wait_for_downlink_result(msg_topic, msg_payload)

@@ -14,7 +14,7 @@ UPLINK_TIMEOUT = 20
 RETRY_INTERVAL = 10
 
 
-async def send_ping(tlwbe: Tlwbe):
+async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
     counter = 0
     failures = 0
     while True:
@@ -26,6 +26,11 @@ async def send_ping(tlwbe: Tlwbe):
             failures = 0
             logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
 
+            try:
+                await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello, world!')
+            except asyncio.futures.TimeoutError:
+                pass
+            
             await asyncio.sleep(HEARTBEAT_INTERVAL)
         except asyncio.futures.TimeoutError:
             failures += 1
@@ -72,7 +77,7 @@ async def main():
     result: Result = await tlwbe.get_dev_by_eui(deveui)
     logger.debug('dev address is %s' % result.payload)
 
-    await asyncio.gather(send_ping(tlwbe))
+    await asyncio.gather(send_ping(tlwbe, appeui, deveui))
 
 
 parser = argparse.ArgumentParser()
@@ -87,11 +92,11 @@ parser.add_argument('--deveui', type=str)
 args = parser.parse_args()
 
 if args.appname is None and args.appeui is None:
-    print("name the app name or eui")
+    print("need the app name or eui")
     exit(1)
 
 if args.devname is None and args.deveui is None:
-    print("name the dev name or eui")
+    print("need the dev name or eui")
     exit(1)
 
 logging.basicConfig(level=logging.DEBUG)
