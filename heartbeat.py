@@ -18,6 +18,8 @@ async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
     counter = 0
     failures = 0
     while True:
+        rak811.get_frame_counters()
+        rak811.get_status()
         logger.info('sending heartbeat')
         rak811.send(1, bytearray('%08x' % counter, 'utf-8'))
         counter += 1
@@ -27,10 +29,10 @@ async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
             logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
 
             try:
-                await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello, world!')
+                await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello')
             except asyncio.futures.TimeoutError:
                 pass
-            
+
             await asyncio.sleep(HEARTBEAT_INTERVAL)
         except asyncio.futures.TimeoutError:
             failures += 1
@@ -107,6 +109,8 @@ rak811 = Rak811(ser)
 
 rak811.reset()
 rak811.get_version()
+rak811.get_rx1_delay()
+rak811.get_rx2()
 
 try:
     asyncio.run(main())

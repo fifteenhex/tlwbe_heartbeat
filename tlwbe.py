@@ -69,8 +69,8 @@ class Tlwbe(MqttBase):
         self.__dump_message(msg)
         result = Result(msg)
         self.__logger.debug('have result for %s' % result.token)
-        if result.token in self.__control_results:
-            future: Future = self.__control_results.pop(result.token)
+        if result.token in results:
+            future: Future = results.pop(result.token)
             self.event_loop.call_soon_threadsafe(future.set_result, result)
         else:
             self.__logger.warning('rogue result')
@@ -91,7 +91,7 @@ class Tlwbe(MqttBase):
         self.mqtt_client.message_callback_add('tlwbe/join/+/+', self.__on_join)
         self.mqtt_client.message_callback_add('tlwbe/uplink/#', self.__on_uplink)
         self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_control_result)
-        self.mqtt_client.message_callback_add('tlwbe/control/result/#', self.__on_downlink_result)
+        self.mqtt_client.message_callback_add('tlwbe/downlink/result/#', self.__on_downlink_result)
         self.mqtt_client.on_message = self.__on_msg
         self.mqtt_client.on_subscribe = self._on_sub
         self.mqtt_client.subscribe('tlwbe/control/result/#')

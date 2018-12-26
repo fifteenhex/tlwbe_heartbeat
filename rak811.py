@@ -110,8 +110,24 @@ class Rak811:
         line = self.__encode_command('get_config', ['ch_list'])
         self.__write_line_read_result(line)
 
+    def get_rx1_delay(self):
+        line = self.__encode_command('get_config', ['rx_delay1'])
+        self.__write_line_read_result(line)
+
+    def get_rx2(self):
+        line = self.__encode_command('get_config', ['rx2'])
+        self.__write_line_read_result(line)
+
     def get_signal(self):
         line = self.__encode_command('signal')
+        self.__write_line_read_result(line)
+
+    def get_frame_counters(self):
+        line = self.__encode_command('link_cnt')
+        self.__write_line_read_result(line)
+
+    def get_status(self):
+        line = self.__encode_command('status')
         self.__write_line_read_result(line)
 
     def join(self, otaa=True):
