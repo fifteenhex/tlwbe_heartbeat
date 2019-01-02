@@ -1,10 +1,10 @@
 import paho.mqtt.client as mqtt
 import logging
 import base64
-import lorawan
+from tlwpy import lorawan
 import json
 import asyncio
-from mqttbase import MqttBase
+from tlwpy.mqttbase import MqttBase
 
 
 class PacketForwarder(MqttBase):

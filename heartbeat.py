@@ -2,12 +2,13 @@
 
 import argparse
 import serial
-from rak811 import Rak811
+from tlwpy.rak811 import Rak811
 import asyncio
-from tlwbe import Tlwbe, Uplink, Result
-from gwctrl import Gateway
-from pktfwdbr import PacketForwarder
+from tlwpy.tlwbe import Tlwbe, Uplink, Result
+from tlwpy.gwctrl import Gateway
+from tlwpy.pktfwdbr import PacketForwarder
 import logging
+from daemonize import Daemonize
 
 HEARTBEAT_INTERVAL = 5 * 30
 UPLINK_TIMEOUT = 20
@@ -90,6 +91,7 @@ parser.add_argument('--appname', type=str)
 parser.add_argument('--appeui', type=str)
 parser.add_argument('--devname', type=str)
 parser.add_argument('--deveui', type=str)
+parser.add_argument('--daemonize', action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -112,9 +114,19 @@ rak811.get_version()
 rak811.get_rx1_delay()
 rak811.get_rx2()
 
-try:
-    asyncio.run(main())
-except KeyboardInterrupt:
-    print('dying..')
+pid = '/var/run/heartbeat/heartbeat.pid'
 
-ser.close()
+
+def entry():
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('dying..')
+    ser.close()
+
+
+if args.daemonize:
+    daemon = Daemonize(app="heartbeat", pid=pid, action=entry)
+    daemon.start()
+else:
+    entry()

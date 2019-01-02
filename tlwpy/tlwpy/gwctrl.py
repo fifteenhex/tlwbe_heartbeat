@@ -1,6 +1,5 @@
-import paho.mqtt.client as mqtt
 import logging
-from mqttbase import MqttBase
+from tlwpy.mqttbase import MqttBase
 
 
 class Gateway(MqttBase):
