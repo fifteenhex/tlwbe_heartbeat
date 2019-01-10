@@ -44,13 +44,12 @@ async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
 
 async def main():
     tlwbe = Tlwbe(args.mqtthost)
-    asyncio.get_running_loop().run_in_executor(None, tlwbe.loop)
-
     gwctrl = Gateway(args.mqtthost, args.gateway)
-    asyncio.get_running_loop().run_in_executor(None, gwctrl.loop)
-
     pktfwdr = PacketForwarder(args.mqtthost)
-    asyncio.get_running_loop().run_in_executor(None, pktfwdr.loop)
+
+    await tlwbe.wait_for_connection()
+    await gwctrl.wait_for_connection()
+    await pktfwdr.wait_for_connection()
 
     appeui = args.appeui
     if appeui is None:
@@ -78,7 +77,7 @@ async def main():
     rak811.get_channel_list()
 
     result: Result = await tlwbe.get_dev_by_eui(deveui)
-    logger.debug('dev address is %s' % result.payload)
+    logger.debug('dev address is %s' % result.result)
 
     await asyncio.gather(send_ping(tlwbe, appeui, deveui))
 
