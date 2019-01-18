@@ -28,18 +28,19 @@ async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
             msg: Uplink = await asyncio.wait_for(tlwbe.queue_uplinks.get(), UPLINK_TIMEOUT)
             failures = 0
             logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
-
-            try:
-                await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello')
-            except asyncio.futures.TimeoutError:
-                pass
-
-            await asyncio.sleep(HEARTBEAT_INTERVAL)
         except asyncio.futures.TimeoutError:
             failures += 1
             logger.info('didn\'t see uplink from tlwbe, failed %d times so far, will try again in %ds'
                         % (failures, RETRY_INTERVAL))
             await asyncio.sleep(RETRY_INTERVAL)
+            continue
+
+        try:
+            await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello')
+        except asyncio.futures.TimeoutError:
+            logger.info('timeout sending downlink')
+
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
 async def main():
@@ -64,13 +65,21 @@ async def main():
     tlwbe.listen_for_joins(appeui, deveui)
     tlwbe.listen_for_uplinks(appeui, deveui, 1)
 
-    logger.info('joining...')
-    rak811.join()
-    try:
-        msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
-    except asyncio.futures.TimeoutError:
-        logger.warning('join failed')
-        return
+    while True:
+        logger.info('joining...')
+        rak811.reset()
+        if not rak811.join():
+            logger.warning('rak811 says join failed')
+            await asyncio.sleep(30)
+            continue
+
+        try:
+            msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
+        except asyncio.futures.TimeoutError:
+            logger.warning('didn\'t see join announcement')
+
+        break
+
     logger.info('joined')
     rak811.get_signal()
 
@@ -86,21 +95,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--serialport', type=str, required=True)
 parser.add_argument('--mqtthost', type=str, required=True)
 parser.add_argument('--gateway', type=str, required=True)
-parser.add_argument('--appname', type=str)
-parser.add_argument('--appeui', type=str)
-parser.add_argument('--devname', type=str)
-parser.add_argument('--deveui', type=str)
+parser.add_argument('--appeui', type=str, required=True)
+parser.add_argument('--deveui', type=str, required=True)
+parser.add_argument('--key', type=str, required=True)
 parser.add_argument('--daemonize', action='store_true', default=False)
 
 args = parser.parse_args()
-
-if args.appname is None and args.appeui is None:
-    print("need the app name or eui")
-    exit(1)
-
-if args.devname is None and args.deveui is None:
-    print("need the dev name or eui")
-    exit(1)
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('heartbeat')
@@ -109,6 +109,9 @@ ser = serial.Serial(args.serialport, 115200, timeout=10)  # open serial port
 rak811 = Rak811(ser)
 
 rak811.reset()
+
+rak811.set_otaa_parameters(args.appeui, args.deveui, args.key)
+
 rak811.get_version()
 rak811.get_rx1_delay()
 rak811.get_rx2()
