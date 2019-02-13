@@ -117,24 +117,26 @@ parser.add_argument('--daemonize', action='store_true', default=False)
 
 args = parser.parse_args()
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('heartbeat')
-
-ser = serial.Serial(args.serialport, 115200, timeout=10)  # open serial port
-rak811 = Rak811(ser)
-
-rak811.reset()
-
-rak811.set_otaa_parameters(args.appeui, args.deveui, args.key)
-
-rak811.get_version()
-rak811.get_rx1_delay()
-rak811.get_rx2()
-
-pid = '/var/run/heartbeat/heartbeat.pid'
+pid = '/var/run/heartbeat.pid'
 
 
 def entry():
+    global logger
+    global rak811
+    logger = logging.getLogger('heartbeat')
+    logging.basicConfig(level=logging.DEBUG)
+
+    ser = serial.Serial(args.serialport, 115200, timeout=10)  # open serial port
+    rak811 = Rak811(ser)
+
+    rak811.reset()
+
+    rak811.set_otaa_parameters(args.appeui, args.deveui, args.key)
+
+    rak811.get_version()
+    rak811.get_rx1_delay()
+    rak811.get_rx2()
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
