@@ -36,17 +36,23 @@ async def send_ping(tlwbe: Tlwbe, app_eui: str, dev_eui: str):
             msg: Uplink = await asyncio.wait_for(tlwbe.queue_uplinks.get(), UPLINK_TIMEOUT)
             failures = 0
             logger.info('got uplink for heartbeat; rssi was %s' % msg.rfparams.get('rssi'))
+
+            # if the uplink got through schedule a downlink
+            try:
+                await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello')
+            except asyncio.futures.TimeoutError:
+                logger.info('timeout sending downlink')
+
         except asyncio.futures.TimeoutError:
             failures += 1
-            logger.info('didn\'t see uplink from tlwbe, failed %d times so far, will try again in %ds'
-                        % (failures, RETRY_INTERVAL))
-            await asyncio.sleep(RETRY_INTERVAL)
-            continue
-
-        try:
-            await tlwbe.send_downlink(app_eui, dev_eui, 1, b'hello')
-        except asyncio.futures.TimeoutError:
-            logger.info('timeout sending downlink')
+            if failures >= SEND_FAILURE_THRESHOLD:
+                logging.info('uplink failed too many times')
+                break
+            else:
+                logger.info('didn\'t see uplink from tlwbe, failed %d times so far, will try again in %ds'
+                            % (failures, RETRY_INTERVAL))
+                await asyncio.sleep(RETRY_INTERVAL)
+                continue
 
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
@@ -73,37 +79,37 @@ async def main():
     tlwbe.listen_for_joins(appeui, deveui)
     tlwbe.listen_for_uplinks(appeui, deveui, 1)
 
-    join_failures = 0
     while True:
-        logger.info('joining...')
-        rak811.reset()
-        if not rak811.join():
-            join_failures += 1
-            logger.warning('rak811 says join failed, failed %d times so far', join_failures)
+        join_failures = 0
+        while True:
+            logger.info('joining...')
+            rak811.reset()
+            if not rak811.join():
+                join_failures += 1
+                logger.warning('rak811 says join failed, failed %d times so far', join_failures)
 
-            if join_failures >= JOIN_FAILURE_THRESHOLD:
-                await do_reboot(gwctrl)
-                join_failures = 0
+                if join_failures >= JOIN_FAILURE_THRESHOLD:
+                    await do_reboot(gwctrl)
+                    join_failures = 0
 
-            await asyncio.sleep(30)
-            continue
+                await asyncio.sleep(30)
+                continue
 
-        try:
-            msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
-        except asyncio.futures.TimeoutError:
-            logger.warning('didn\'t see join announcement')
+            try:
+                msg = await asyncio.wait_for(tlwbe.queue_joins.get(), timeout=30)
+            except asyncio.futures.TimeoutError:
+                logger.warning('didn\'t see join announcement')
 
-        break
+            break
 
-    logger.info('joined')
-    rak811.get_signal()
+        logger.info('joined')
+        rak811.get_signal()
+        rak811.get_channel_list()
 
-    rak811.get_channel_list()
+        result: Result = await tlwbe.get_dev_by_eui(deveui)
+        logger.debug('dev address is %s' % result.result)
 
-    result: Result = await tlwbe.get_dev_by_eui(deveui)
-    logger.debug('dev address is %s' % result.result)
-
-    await asyncio.gather(send_ping(tlwbe, appeui, deveui))
+        await asyncio.gather(send_ping(tlwbe, appeui, deveui))
 
 
 parser = argparse.ArgumentParser()
